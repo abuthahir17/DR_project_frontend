@@ -37,7 +37,7 @@ function App() {
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/reports");
+      const res = await fetch("https://abuthahir17-eye-dr-backend.hf.space/reports");
       if (res.ok) {
         const data = await res.json();
         setHistoryData(data);
@@ -178,7 +178,7 @@ function App() {
     formData.append("report_id", frontendReportId);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/predict", {
+      const res = await fetch("https://abuthahir17-eye-dr-backend.hf.space/predict", {
         method: "POST",
         body: formData,
       });
@@ -249,7 +249,7 @@ function App() {
 
     try {
       // Backend URL correct-a irukkanu check panniko
-      const response = await fetch("http://127.0.0.1:8000/predict", {
+      const response = await fetch("https://abuthahir17-eye-dr-backend.hf.space/predict", {
         method: "POST",
         body: formData,
       });
