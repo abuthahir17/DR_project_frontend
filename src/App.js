@@ -1909,9 +1909,9 @@ function App() {
                         fontWeight: '700'
                     }}>📊 Severity Distribution</h4>
                     {[
-                        {label: 'Moderate NPDR', value: result.details.moderate, color: '#f59e0b'},
-                        {label: 'Severe NPDR', value: result.details.severe, color: '#fb923c'},
-                        {label: 'Proliferative DR', value: result.details.pdr, color: '#ef4444'}
+                        {label: 'Moderate NPDR', value: result?.details?.moderate || 0, color: '#f59e0b'},
+                        {label: 'Severe NPDR', value: result?.details?.severe || 0, color: '#fb923c'},
+                        {label: 'Proliferative DR', value: result?.details?.pdr || 0, color: '#ef4444'}
                     ].map((item, i) => (
                         <div key={i} style={{marginBottom: '16px'}}>
                         <div style={{
