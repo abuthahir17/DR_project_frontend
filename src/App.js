@@ -37,7 +37,7 @@ function App() {
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
-      const res = await fetch("https://abuthahir17-eye-dr-backend.hf.space/reports");
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/reports`);
       if (res.ok) {
         const data = await res.json();
         setHistoryData(data);
@@ -178,7 +178,7 @@ function App() {
     formData.append("report_id", frontendReportId);
 
     try {
-      const res = await fetch("https://abuthahir17-eye-dr-backend.hf.space/predict", {
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/predict`, {
         method: "POST",
         body: formData,
       });
@@ -249,7 +249,7 @@ function App() {
 
     try {
       // Backend URL correct-a irukkanu check panniko
-      const response = await fetch("https://abuthahir17-eye-dr-backend.hf.space/predict", {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/predict`, {
         method: "POST",
         body: formData,
       });
@@ -385,7 +385,13 @@ function App() {
               boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
               border: '2px solid rgba(255,255,255,0.3)'
             }}>
-              👁️
+            
+            <img 
+                src="eye.png" 
+                alt="Logo" 
+                style={{ width: '65px', height: '90px', objectFit: 'contain' }} 
+              />
+
               <div style={{
                 position: 'absolute',
                 bottom: '-5px',
