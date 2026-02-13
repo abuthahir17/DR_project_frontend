@@ -387,7 +387,7 @@ function App() {
             }}>
             
             <img 
-                src="eye.png" 
+                src="eye-exam.png" 
                 alt="Logo" 
                 style={{ width: '65px', height: '90px', objectFit: 'contain' }} 
               />
