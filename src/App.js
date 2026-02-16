@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-
+const API_URL = "https://abuthahir17-eye-dr-backend.hf.space";
 function App() {
   // --- STATE VARIABLES ---
   // 👇 CHANGE 1: Default state changed from 'home' to 'register' to fix blank screen
   const [activeTab, setActiveTab] = useState("register"); 
-  const API_URL = "https://abuthahir17-eye-dr-backend.hf.space";
+
 
   const [patientName, setPatientName] = useState("");
   const [patientAge, setPatientAge] = useState("");
