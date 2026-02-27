@@ -198,7 +198,7 @@ const Login = ({ onLoginSuccess }) => {
   useEffect(() => {
     if (otpAttempts >= 3) {
       setOtpBlocked(true);
-      setError('Too many failed attempts. Please request new OTP.');
+      setError('⏰ Too many failed attempts. Please request new OTP.');
       setTimeout(() => { setOtpBlocked(false); setOtpAttempts(0); }, 30000);
     }
   }, [otpAttempts]);
@@ -220,138 +220,323 @@ const Login = ({ onLoginSuccess }) => {
 
   // --- API HANDLERS ---
   const handleGoogleSignIn = async () => {
-    setLoading(true); setError('');
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      const res = await fetch('https://dr-project-backend.onrender.com/api/check-user', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email, google_id: user.uid })
-      });
-      const data = await res.json();
-      if (data.exists) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        setSuccess('Authentication verified.');
-        setTimeout(() => onLoginSuccess(data.user), 1500);
-      } else {
-        setError('Account not found. Please verify credentials.');
-        setFormData(prev => ({ ...prev, email: user.email, fullName: user.displayName || '' }));
-        setMode('signup'); setSignupStep(0);
+  setLoading(true);
+  setError('');
+  try {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+    
+    console.log("Google Sign-In - Sending request to backend...");
+    
+    // 👇 CHECK: method: 'POST' nu irukanum!
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/api/check-user`, {
+      method: 'POST',  // <--- POST dhaan!
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        email: user.email, 
+        google_id: user.uid 
+      })
+    });
+    
+    // Check if response is JSON
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await res.text();
+      console.error("Received HTML:", text.substring(0, 200));
+      throw new Error("Backend returned HTML. Server may be down.");
+    }
+    
+    const data = await res.json();
+    console.log("Backend response:", data);
+    
+    if (data.exists) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      setSuccess('Authentication verified.');
+      setTimeout(() => onLoginSuccess(data.user), 1500);
+    } else {
+      setError('Account not found. Please verify credentials.');
+      setFormData(prev => ({ 
+        ...prev, 
+        email: user.email, 
+        fullName: user.displayName || '' 
+      }));
+      setMode('signup'); 
+      setSignupStep(0);
+    }
+  } catch (err) { 
+    console.error("Google Sign-In Error:", err);
+    setError(err.message || 'Authentication Failed'); 
+  } finally { 
+    setLoading(false); 
+  }
+};
+
+const handleLogin = async (e) => {
+  e.preventDefault();
+  if (!formData.username || !formData.password) { setError('Credentials required.'); return; }
+  setLoading(true); setError(''); setSuccess('');
+  try {
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/api/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: formData.username, password: formData.password })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      setSuccess('Verified. Accessing Dashboard...');
+      setTimeout(() => onLoginSuccess(data.user), 1500);
+    } else { setError(data.error || 'Invalid Credentials'); }
+  } catch (err) { setError('System Error: Database Unreachable'); } finally { setLoading(false); }
+};
+
+const handleSignupSendOTP = async () => {
+  if (!formData.email) { 
+    setError('Email required'); 
+    return; 
+  }
+  
+  console.log("📤 Sending signup OTP request for:", formData.email);
+  
+  setLoading(true); 
+  setError('');
+  setSuccess(''); // Clear any previous success messages
+  
+  try {
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/api/send-signup-otp`, {
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: formData.email })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok) {
+      setSignupStep(1); 
+      setCountdown(60); // Reset countdown to 60 seconds
+      setOtpAttempts(0);
+      setFormData({ ...formData, otp: '' }); // Clear OTP field
+      // setSuccess(`✅ Code sent to ${formData.email}`);
+    } else { 
+      setError(data.error || 'Failed to send OTP'); 
+    }
+  } catch (err) { 
+    console.error("❌ Network Error:", err);
+    setError('Network Error - Check console'); 
+  } finally { 
+    setLoading(false); 
+  }
+};
+
+const handleSignupVerifyOTP = async () => {
+  if (!formData.otp || formData.otp.length !== 6) { 
+    setError('Please enter 6-digit OTP'); 
+    return; 
+  }
+  
+  console.log("📤 Verifying signup OTP for:", formData.email);
+  console.log("📤 OTP:", formData.otp);
+  
+  setLoading(true); 
+  setError('');
+  
+  try {
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/api/verify-signup-otp`, {
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        email: formData.email, 
+        otp: formData.otp 
+      })
+    });
+    
+    const data = await res.json();
+    console.log("📥 Response status:", res.status);
+    console.log("📥 Response data:", data);
+    
+    if (res.ok && data.success) {
+      setSignupStep(2); 
+      setSuccess('Email Verified! Complete your profile.'); 
+      setOtpAttempts(0);
+      console.log("✅ Signup OTP verified");
+    } else {
+      setOtpAttempts(prev => prev + 1); 
+      setError(data.error || 'Invalid OTP. Please try again.');
+      console.log("❌ OTP verification failed:", data.error);
+      
+      // If too many attempts, show message
+      if (data.error && data.error.includes('attempts')) {
+        // Backend sends "Invalid OTP. X attempts remaining"
+        // Don't increment attempts again
       }
-    } catch (err) { setError(err.message || 'Authentication Failed'); } finally { setLoading(false); }
-  };
+    }
+  } catch (err) { 
+    console.error("❌ Network Error:", err);
+    setError('Network Error. Please check connection.'); 
+  } finally { 
+    setLoading(false); 
+  }
+};
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (!formData.username || !formData.password) { setError('Credentials required.'); return; }
-    setLoading(true); setError(''); setSuccess('');
-    try {
-      const res = await fetch('https://dr-project-backend.onrender.com/api/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: formData.username, password: formData.password })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        setSuccess('Verified. Accessing Dashboard...');
-        setTimeout(() => onLoginSuccess(data.user), 1500);
-      } else { setError(data.error || 'Invalid Credentials'); }
-    } catch (err) { setError('System Error: Database Unreachable'); } finally { setLoading(false); }
-  };
-
-  const handleSignupSendOTP = async () => {
-    if (!formData.email) { setError('Email required'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('https://dr-project-backend.onrender.com/api/send-signup-otp', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSignupStep(1); setCountdown(60); setOtpAttempts(0);
-        setSuccess(`Code sent to ${formData.email}`);
-      } else { setError(data.error || 'Failed to send OTP'); }
-    } catch (err) { setError('Network Error'); } finally { setLoading(false); }
-  };
-
-  const handleSignupVerifyOTP = async () => {
-    if (!formData.otp || formData.otp.length !== 6) { setError('Invalid Code'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('https://dr-project-backend.onrender.com/api/verify-signup-otp', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, otp: formData.otp })
-      });
-      if (res.ok) {
-        setSignupStep(2); setSuccess('Confirmed. Complete Profile.'); setOtpAttempts(0);
-      } else {
-        setOtpAttempts(prev => prev + 1); setError('Invalid Code');
-      }
-    } catch (err) { setError('Verification Error'); } finally { setLoading(false); }
-  };
-
-  const handleCompleteSignup = async (e) => {
-    e.preventDefault();
-    if (!formData.fullName || !formData.username || !formData.password) { setError('All fields required'); return; }
-    if (formData.password !== formData.confirmPassword) { setError('Password Mismatch'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('https://dr-project-backend.onrender.com/api/complete-signup', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, full_name: formData.fullName, username: formData.username, password: formData.password })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSuccess('Registered! Redirecting...');
-        setTimeout(() => { switchMode('login'); }, 2000);
-      } else { setError(data.error || 'Registration Failed'); }
-    } catch (err) { setError('Server Error'); } finally { setLoading(false); }
-  };
+const handleCompleteSignup = async (e) => {
+  e.preventDefault();
+  if (!formData.fullName || !formData.username || !formData.password) { setError('All fields required'); return; }
+  if (formData.password !== formData.confirmPassword) { setError('Password Mismatch'); return; }
+  setLoading(true); setError('');
+  try {
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/api/complete-signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        email: formData.email, 
+        full_name: formData.fullName, 
+        username: formData.username, 
+        password: formData.password 
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      setSuccess('Registered! Redirecting to login...');
+      setTimeout(() => { switchMode('login'); }, 2000);
+    } else { 
+      setError(data.error || 'Registration Failed'); 
+    }
+  } catch (err) { 
+    setError('Server Error'); 
+  } finally { 
+    setLoading(false); 
+  }
+};
 
   const handleForgotSendOTP = async () => {
-    if (!formData.email) { setError('Email required'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('https://dr-project-backend.onrender.com/api/forgot-password', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email })
-      });
-      if (res.ok) { setOtpSent(true); setCountdown(60); setSuccess('Recovery Code Sent'); }
-      else { setError('User not found'); }
-    } catch (err) { setError('Network Error'); } finally { setLoading(false); }
-  };
+  if (!formData.email) { 
+    setError('Email required'); 
+    return; 
+  }
+  
+  setLoading(true); 
+  setError('');
+  setSuccess('');
+  
+  try {
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/api/forgot-password`, {
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: formData.email })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok) { 
+      setOtpSent(true); 
+      setCountdown(60);
+      setOtpVerified(false);
+      setOtpAttempts(0);
+      setOtpBlocked(false);
+      setFormData({ ...formData, otp: '' });
+      // Success message optional
+    }
+    else { 
+      setError(data.error || 'User not found'); 
+    }
+  } catch (err) { 
+    console.error("❌ Network Error:", err);
+    setError('Network Error'); 
+  } finally { 
+    setLoading(false); 
+  }
+};
 
-  const handleForgotVerifyOTP = async () => {
-    if (!formData.otp) { setError('Invalid Code'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('https://dr-project-backend.onrender.com/api/verify-otp', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, otp: formData.otp })
-      });
-      if (res.ok) { setOtpVerified(true); setSuccess('Verified'); }
-      else { setError('Invalid Code'); }
-    } catch (err) { setError('Verification Failed'); } finally { setLoading(false); }
-  };
+const handleForgotVerifyOTP = async () => {
+  if (!formData.otp || formData.otp.length !== 6) { 
+    setError('Please enter 6-digit OTP'); 
+    return; 
+  }
+  
+  // Check if blocked by attempts
+  if (otpBlocked) {
+    setError('Too many failed attempts. Please request new OTP.');
+    return;
+  }
+  
+  setLoading(true); 
+  setError('');
+  
+  try {
+    console.log("📤 Verifying OTP for:", formData.email);
+    
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/api/verify-otp`, {
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        email: formData.email, 
+        otp: formData.otp 
+      })
+    });
+    
+    const data = await res.json();
+    console.log("📥 Verify OTP response:", data);
+    
+    if (res.ok && data.success) { 
+      setOtpVerified(true); 
+      setSuccess('OTP Verified Successfully');
+      setOtpAttempts(0);
+      console.log("✅ OTP verified");
+    }
+    else { 
+      // Check if error is about expiry
+      if (data.error && data.error.includes('expired')) {
+        setError('⏰ OTP expired. Please request new OTP.');
+        // Reset OTP sent state so user goes back to email step
+        setOtpSent(false);
+        setCountdown(0);
+      } else {
+        // Increment attempts only for wrong OTP, not expired
+        const newAttempts = otpAttempts + 1;
+        setOtpAttempts(newAttempts);
+        
+        const remaining = 3 - newAttempts;
+        setError(`⚠️ Invalid OTP. ${remaining} attempts remaining.`);
+      }
+      
+      console.log("❌ OTP verification failed");
+    }
+  } catch (err) { 
+    console.error("❌ Network Error:", err);
+    setError('Verification Failed. Please try again.'); 
+  } finally { 
+    setLoading(false); 
+  }
+};
 
-  const handleResetPassword = async () => {
-    if (formData.newPassword !== formData.confirmPassword) { setError('Password Mismatch'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('https://dr-project-backend.onrender.com/api/reset-password', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, new_password: formData.newPassword, otp: formData.otp })
-      });
-      if (res.ok) {
-        setSuccess('Password Updated');
-        setTimeout(() => { switchMode('login'); }, 2000);
-      } else { setError('Update Failed'); }
-    } catch (err) { setError('Server Error'); } finally { setLoading(false); }
-  };
+const handleResetPassword = async () => {
+  if (formData.newPassword !== formData.confirmPassword) { setError('Password Mismatch'); return; }
+  if (formData.newPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
+  
+  setLoading(true); setError('');
+  try {
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/api/reset-password`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        email: formData.email, 
+        new_password: formData.newPassword, 
+        otp: formData.otp 
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      setSuccess('Password Updated! Redirecting to login...');
+      setTimeout(() => { switchMode('login'); }, 2000);
+    } else { 
+      setError(data.error || 'Update Failed'); 
+    }
+  } catch (err) { 
+    setError('Server Error'); 
+  } finally { 
+    setLoading(false); 
+  }
+};
 
   // Helper text
   const getTitle = () => mode === "login" ? "Welcome Back" : mode === "signup" ? "Create Account" : "Reset Password";
@@ -466,7 +651,7 @@ const Login = ({ onLoginSuccess }) => {
                 {error && (
                   <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
                     style={{ marginBottom: 16, padding: 10, borderRadius: 8, background: "hsl(0 84% 60% / 0.08)", color: "hsl(0 72% 40%)", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", gap: 8 }}>
-                    ⚠️ {error}
+                     {error}
                   </motion.div>
                 )}
                 {success && (
@@ -563,12 +748,63 @@ const Login = ({ onLoginSuccess }) => {
                   )}
                   {mode === "signup" && signupStep === 1 && (
                     <>
-                      <div style={{ padding: 10, borderRadius: 8, background: "hsl(221 83% 53% / 0.06)", color: "hsl(221 83% 53%)", fontSize: 13, textAlign: "center", fontWeight: 500 }}>
-                        OTP sent to {formData.email}
+                      <div style={{ 
+                        padding: 10, 
+                        borderRadius: 8, 
+                        background: "hsl(221 83% 53% / 0.06)", 
+                        color: "hsl(221 83% 53%)", 
+                        fontSize: 13, 
+                        textAlign: "center", 
+                        fontWeight: 500 
+                      }}>
+                        ✅ Code sent to {formData.email}
                       </div>
-                      <InputField label="Enter OTP" name="otp" value={formData.otp} onChange={handleChange} placeholder="6-digit code" style={{textAlign: 'center', letterSpacing: '4px'}} />
-                      <SubmitButton loading={loading} onClick={handleSignupVerifyOTP}>Verify Email</SubmitButton>
-                      {countdown > 0 && <p style={{ textAlign: "center", fontSize: 13, color: "hsl(215 16% 47%)" }}>Resend in {countdown}s</p>}
+                      
+                      <InputField 
+                        label="Enter OTP" 
+                        name="otp" 
+                        value={formData.otp} 
+                        onChange={handleChange} 
+                        placeholder="6-digit code" 
+                        style={{textAlign: 'center', letterSpacing: '4px'}} 
+                      />
+                      
+                      <SubmitButton 
+                        loading={loading} 
+                        onClick={handleSignupVerifyOTP}
+                      >
+                        Verify Email
+                      </SubmitButton>
+                      
+                      {/* RESEND OTP SECTION - FIXED */}
+                      <div style={{ textAlign: "center", marginTop: 16 }}>
+                        {countdown > 0 ? (
+                          <p style={{ 
+                            fontSize: 13, 
+                            color: "hsl(215 16% 47%)" 
+                          }}>
+                            Resend available in {countdown}s
+                          </p>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleSignupSendOTP}
+                            disabled={loading}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: "hsl(221 83% 53%)",
+                              cursor: loading ? "not-allowed" : "pointer",
+                              textDecoration: "underline",
+                              opacity: loading ? 0.5 : 1
+                            }}
+                          >
+                            Resend OTP
+                          </button>
+                        )}
+                      </div>
                     </>
                   )}
                   {mode === "signup" && signupStep === 2 && (
@@ -593,15 +829,70 @@ const Login = ({ onLoginSuccess }) => {
                         </>
                       ) : !otpVerified ? (
                         <>
-                          <InputField label="Enter OTP" name="otp" value={formData.otp} onChange={handleChange} placeholder="6-digit code" style={{textAlign: 'center', letterSpacing: '4px'}}/>
-                          <SubmitButton loading={loading} onClick={handleForgotVerifyOTP}>Verify Code</SubmitButton>
+                          <div style={{ 
+                            padding: 10, 
+                            borderRadius: 8, 
+                            background: "hsl(221 83% 53% / 0.06)", 
+                            color: "hsl(221 83% 53%)", 
+                            fontSize: 13, 
+                            textAlign: "center", 
+                            fontWeight: 500 
+                          }}>
+                            ✅ Code sent to {formData.email}
+                          </div>
+                          
+                          <InputField 
+                            label="Enter OTP" 
+                            name="otp" 
+                            value={formData.otp} 
+                            onChange={handleChange} 
+                            placeholder="6-digit code" 
+                            style={{textAlign: 'center', letterSpacing: '4px'}}
+                          />
+                          
+                          <SubmitButton 
+                            loading={loading} 
+                            onClick={handleForgotVerifyOTP}
+                          >
+                            Verify Code
+                          </SubmitButton>
+                          
+                          {/* 👇 ADD THIS RESEND OTP SECTION FOR FORGOT PASSWORD */}
+                          <div style={{ textAlign: "center", marginTop: 16 }}>
+                            {countdown > 0 ? (
+                              <p style={{ 
+                                fontSize: 13, 
+                                color: "hsl(215 16% 47%)" 
+                              }}>
+                                Resend available in {countdown}s
+                              </p>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleForgotSendOTP}
+                                disabled={loading}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                  color: "hsl(221 83% 53%)",
+                                  cursor: loading ? "not-allowed" : "pointer",
+                                  textDecoration: "underline",
+                                  opacity: loading ? 0.5 : 1
+                                }}
+                              >
+                                Resend OTP
+                              </button>
+                            )}
+                          </div>
                         </>
                       ) : (
-                         <>
-                           <InputField label="New Password" name="newPassword" type="password" value={formData.newPassword} onChange={handleChange} placeholder="New password" />
-                           <InputField label="Confirm Password" name="confirmPassword" type="password" value={formData.confirmPassword} onChange={handleChange} placeholder="Confirm password" />
-                           <SubmitButton loading={loading} onClick={handleResetPassword}>Reset Password</SubmitButton>
-                         </>
+                        <>
+                          <InputField label="New Password" name="newPassword" type="password" value={formData.newPassword} onChange={handleChange} placeholder="New password" />
+                          <InputField label="Confirm Password" name="confirmPassword" type="password" value={formData.confirmPassword} onChange={handleChange} placeholder="Confirm password" />
+                          <SubmitButton loading={loading} onClick={handleResetPassword}>Reset Password</SubmitButton>
+                        </>
                       )}
                       <button type="button" onClick={() => switchMode("login")}
                         style={{ fontSize: 13, fontWeight: 600, color: "hsl(221 83% 53%)", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
@@ -609,8 +900,7 @@ const Login = ({ onLoginSuccess }) => {
                       </button>
                     </>
                   )}
-                </form>
-
+              </form>
                 {mode === "login" && (
                   <p style={{ textAlign: "center", marginTop: 24, fontSize: 13, color: "hsl(215 16% 47%)" }}>
                     New User? <button onClick={() => switchMode("signup")} style={{ fontWeight: 700, color: "hsl(221 83% 53%)", background: "none", border: "none", cursor: "pointer" }}>Sign Up Here</button>

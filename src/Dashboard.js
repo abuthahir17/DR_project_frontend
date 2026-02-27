@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 
-function Dashboard() {
+function Dashboard({ user }) {  // <-- ADD user prop here
   // --- STATE VARIABLES ---
   // 👇 CHANGE 1: Default state changed from 'home' to 'register' to fix blank screen
   const [activeTab, setActiveTab] = useState("register"); 
@@ -34,21 +34,45 @@ function Dashboard() {
   }, [showReport]);
 
   // --- FETCH HISTORY (MongoDB) ---
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const res = await fetch(`${process.env.REACT_APP_API_URL}/reports`);
-      if (res.ok) {
-        const data = await res.json();
-        setHistoryData(data);
-      } else {
-        console.error("Failed to fetch history");
-      }
-    } catch (err) {
-      console.error("Error fetching history:", err);
+  // Dashboard.js - Update this function
+
+// --- FETCH HISTORY (User-specific) ---
+const fetchHistory = async () => {
+  if (!user) {
+    console.log("No user logged in");
+    return;
+  }
+  
+  setLoadingHistory(true);
+  try {
+    // Get token from localStorage
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      console.error("No token found");
+      return;
     }
-    setLoadingHistory(false);
-  };
+    
+    // Send user_id to backend
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/api/reports/user/${user.id}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      setHistoryData(data);
+      console.log(`✅ Loaded ${data.length} reports for user ${user.id}`);
+    } else {
+      console.error("Failed to fetch user history");
+    }
+  } catch (err) {
+    console.error("Error fetching history:", err);
+  }
+  setLoadingHistory(false);
+};
 
   // --- TAB HANDLER ---
   const handleTabChange = (tab) => {
@@ -155,49 +179,61 @@ function Dashboard() {
   // --- ANALYZE IMAGE (UPDATED) ---
   // --- ANALYZE IMAGE (SYNC ID WITH BACKEND) ---
   const analyzeImage = async () => {
-    if (!file || !patientName || !patientAge) {
-      alert("⚠️ Please complete all required patient information and upload retinal scan");
-      return;
+  if (!file || !patientName || !patientAge) {
+    alert("⚠️ Please complete all required patient information");
+    return;
+  }
+  
+  setLoading(true);
+  
+  const frontendReportId = "#" + Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("name", patientName);
+  formData.append("age", patientAge);
+  formData.append("gender", patientGender);
+  formData.append("patient_id", patientId);
+  formData.append("report_id", frontendReportId);
+  formData.append("patient_phone", patientPhone); // 👈 Add phone
+  formData.append("patient_email", patientEmail);
+  if (user && user.id) {
+    formData.append("user_id", user.id);
+  }
+
+  try {
+    // 👇 Timeout 60 seconds (default 30 sec)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    
+    const res = await fetch(`${process.env.REACT_APP_API_URL}/predict`, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!res.ok) throw new Error("Server Error");
+    
+    const data = await res.json();
+    setResult(data);
+    setShowReport(true);
+    
+  } catch (err) {
+    console.error(err);
+    
+    // 👇 User friendly message
+    if (err.name === 'AbortError') {
+      alert("⏳ Server is waking up. Please try again in 10 seconds.");
+    } else {
+      alert("❌ Server is starting up. Click 'Generate Report' again.");
     }
     
-    setLoading(true);
-    setResult(null); 
-    setShowReport(false);
-
-    // 👇 1. GENERATE ID HERE (Like #78754)
-    const frontendReportId = "#" + Math.floor(Math.random() * 100000).toString().padStart(5, '0');
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("name", patientName);
-    formData.append("age", patientAge);
-    formData.append("gender", patientGender);
-    formData.append("patient_id", patientId);
-    
-    // 👇 2. SEND THIS ID TO BACKEND
-    formData.append("report_id", frontendReportId);
-
-    try {
-      const res = await fetch(`${process.env.REACT_APP_API_URL}/predict`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Server Error");
-      
-      const data = await res.json();
-      setResult(data);
-      setShowReport(true);
-      
-      // Update history immediately
-      setHistoryData(prev => [{ ...data, date: new Date().toISOString() }, ...prev]);
-      
-    } catch (err) {
-      console.error(err);
-      alert("❌ Backend Connection Error. Please ensure the diagnostic server is running.");
-    }
+  } finally {
     setLoading(false);
-  };
-
+  }
+};
 
 
   const getSeverityColor = (severity) => {

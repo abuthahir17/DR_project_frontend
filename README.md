@@ -4,3 +4,7 @@ npm install framer-motion
 
 npm install
 nom start
+
+
+npm run build   
+firebase deploy
